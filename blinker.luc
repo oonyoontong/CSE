@@ -1,0 +1,18 @@
+module blinker (
+    input clk,    // clock
+    input rst,    // reset    
+    output aout,  // 3 outputs to LED
+    output bout,
+    output cout
+  ) {
+ 
+  dff counter[28](.clk(clk), .rst(rst)); // D-flipflop, 28 bits with reset
+ 
+  always {
+    aout = counter.q[27]; // Attached to most sig bit
+    bout = counter.q[26];
+    cout = counter.q[25];
+    
+    counter.d = counter.q + 1; // count += 1
+  }
+}

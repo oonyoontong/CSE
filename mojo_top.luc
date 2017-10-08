@@ -1,0 +1,101 @@
+module mojo_top (
+    input clk,              // 50MHz clock
+    input rst_n,            // reset button (active low)
+    output led [8],         // 8 user controllable LEDs
+    input cclk,             // configuration clock, AVR ready when high
+    output spi_miso,        // AVR SPI MISO
+    input spi_ss,           // AVR SPI Slave Select
+    input spi_mosi,         // AVR SPI MOSI
+    input spi_sck,          // AVR SPI Clock
+    output spi_channel [4], // AVR general purpose pins (used by default to select ADC channel)
+    input avr_tx,           // AVR TX (FPGA RX)
+    output avr_rx,          // AVR RX (FPGA TX)
+    
+    output io_led [3][8],   // LEDs on IO Shield
+    output io_seg [8],      // 7-segment LEDs on IO Shield
+    output io_sel [4],      // Digit select on IO Shield
+    input io_dip [3][8],     // DIP switches on IO Shield
+    
+    output a,               //It is output because it "outputs a signal" to VeroBoard
+    output b,
+    output c,
+    input sum,
+    input carry
+    
+  ) {
+  
+  sig rst;                  // reset signal
+  sig aCheck;               // Temp variables to check for errors
+  sig bCheck;
+  sig cCheck;
+  
+  .clk(clk) {
+    // The reset conditioner is used to synchronize the reset signal to the FPGA
+    // clock. This ensures the entire FPGA comes out of reset at the same time.
+    reset_conditioner reset_cond;
+    
+    .rst(rst) {
+      blinker myBlinker;
+      fsm state = {PASS, FAIL}; // 2 states pass and fail
+      dff count[12];
+    }
+  }
+  
+  always {
+    reset_cond.in = ~rst_n; // input raw inverted reset signal
+    rst = reset_cond.out;   // conditioned reset
+    
+    led = 8h00;             // turn LEDs off
+    spi_miso = bz;          // not using SPI
+    spi_channel = bzzzz;    // not using flags
+    avr_rx = bz;            // not using serial port
+    
+    io_led = 3x{{8h00}};    // turn LEDs off
+    io_seg = 8hff;          // turn segments off
+    io_sel = 4b1110;        // select no digits
+    
+    aCheck = 0;             // for storage of outputs, reset to 0
+    bCheck = 0;
+    cCheck = 0;
+    a = 0;                  // reset outputs to 0
+    b = 0;
+    c = 0;
+    
+    case (state.q) {
+      state.PASS:
+        // Make led on
+        a = myBlinker.aout;
+        b = myBlinker.bout;
+        c = myBlinker.cout;
+        
+        io_led[0] = 8x{myBlinker.aout};
+        io_led[1] = 8x{myBlinker.bout};
+        io_led[2] = 8x{myBlinker.cout};
+        
+        if (myBlinker.aout) {
+          aCheck = 1;
+        }
+        if (myBlinker.bout) {
+          bCheck = 1;
+        }
+        if (myBlinker.cout) {
+          cCheck = 1;
+        }
+        if (((aCheck^bCheck^cCheck) != sum) || (((aCheck&bCheck) | (bCheck&cCheck) | (aCheck&cCheck)) != carry)) { // checks if results of adder produces and error
+          count.d = count.q + 1;
+        }
+        if (count.q == 12hfff) {
+          state.d = state.FAIL;           // when count reaches max value, error switches state to FAIL
+        }
+      
+      state.FAIL:
+        // Make 'E' for error
+        io_seg[0] = 0;
+        io_seg[5] = 0;
+        io_seg[6] = 0;
+        io_seg[4] = 0;
+        io_seg[3] = 0;
+      
+    }
+  }
+}
